@@ -59,7 +59,24 @@ def choose():
     gcal_service = get_gcal_service(credentials)
     app.logger.debug("Returned from get_gcal_service")
     flask.session['calendars'] = list_calendars(gcal_service)
-    return render_template('index.html')
+    return flask.redirect(flask.url_for('index'))
+
+@app.route("/show_busy", methods=['POST'])
+def show_busy():
+    app.logger.debug("Checking credentials for Google calendar access")
+    credentials = valid_credentials()
+    if not credentials:
+       app.logger.debug("Redirecting to authorization")
+       return flask.redirect(flask.url_for('oauth2callback'))
+    
+    # Read calendars
+    gcal_service = get_gcal_service(credentials)
+    app.logger.debug("Returned from get_gcal_service")
+    selected_cals = request.form.getlist('calendars')
+    app.logger.debug(selected_cals)
+    flask.session['busy_times'] = get_times(gcal_service, selected_cals)
+    
+    return render_template('show_busy.html')
 
 ####
 #
@@ -216,7 +233,7 @@ def init_session_values():
     flask.session["daterange"] = "{} - {}".format(
         tomorrow.format("MM/DD/YYYY"),
         nextweek.format("MM/DD/YYYY"))
-    # Default time span each day, 8 to 5
+    # Default time span each day, 9 to 5
     flask.session["begin_time"] = interpret_time("9am")
     flask.session["end_time"] = interpret_time("5pm")
 
@@ -315,6 +332,34 @@ def cal_sort_key( cal ):
     else:
        primary_key = "X"
     return (primary_key, selected_key, cal["summary"])
+    
+def get_times(service, calendars):
+	busyTimes = [] # Busy Time List
+	
+	time_min = flask.session["begin_date"]
+	time_max = arrow.get(flask.session["end_date"]).replace(hours=+24, seconds=-1).isoformat()
+	
+	# Iterate through selected calendars
+	for cal in calendars:
+		# Get items from google
+		calendar_items = service.events().list(calendarId=cal, timeMin=time_min, timeMax=time_max, singleEvents=True).execute()['items']
+		for item in calendar_items:
+			# Add to proper list
+			try:
+				t_start = item["start"]["dateTime"]
+			except:
+				t_start = arrow.get(item["start"]["date"], "YYYY-MM-DD").isoformat()
+			try:
+				t_end = item["end"]["dateTime"]
+			except:
+				t_end = arrow.get(item["end"]["date"], "YYYY-MM-DD").isoformat()
+			item_range = {"start": t_start, "end": t_end, "desc": item["summary"]}
+			if "transparency" in item and item["transparency"] == "transparent":
+				print()# testing transparency property
+			else:
+				busyTimes.append(item_range)
+	
+	return busyTimes
 
 
 #################
@@ -338,6 +383,14 @@ def format_arrow_time( time ):
         return normal.format("HH:mm")
     except:
         return "(bad time)"
+
+@app.template_filter( 'fmtdatetime' )
+def format_arrow_datetime( datetime ):
+    try:
+        normal = arrow.get( datetime )
+        return normal.format("ddd MM/DD/YYYY HH:mm")
+    except:
+        return "(bad time)"
     
 #############
 
@@ -358,4 +411,3 @@ if __name__ == "__main__":
   else:
     # Reachable from anywhere 
     app.run(port=CONFIG.PORT,host="0.0.0.0")
-    
