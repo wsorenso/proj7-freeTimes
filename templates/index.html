@@ -1,47 +1,36 @@
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
 <html lang="en"> <head>
-<title>Appointments</title>
+<title>Appointment Times</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <link rel="stylesheet" type="text/css"
      href="//cdn.jsdelivr.net/bootstrap/latest/css/bootstrap.css"
 />
-
 <link rel="stylesheet" type="text/css"
  href="/static/js/node_modules/bootstrap-daterangepicker/daterangepicker.css"
 />
-
 <link rel="stylesheet" type="text/css"
     href="/static/css/busy.css"
 />
-
 <!-- jquery from a content distribution network; probably cached -->
 <script type="text/javascript"
      src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js">
 </script>
-
 <!-- Moment -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.10.6/moment.min.js"></script>
-
 <!-- Bootstrap DateRangePicker -->
 <link rel="stylesheet" type="text/css"
     href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-daterangepicker/2.1.13/daterangepicker.min.css"
 />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-daterangepicker/2.1.13/daterangepicker.min.js"></script>
-
 </head>
-
 <body>
 <div class="container">
-
-<h1>Busy times</h1>
-
+<h1>Appointment Times</h1>
 <!--
   -- If there are any warnings or other messages from a prior action,
   -- they appear above the rest of the content, just until the next 
   -- action.
   -->
-
 {% with messages = get_flashed_messages() %}
   {% if messages %}
     <ul class=flashes>
@@ -51,7 +40,6 @@
     </ul>
   {% endif %}
 {% endwith %}
-
 <div class="row">
 <div class="col-md-12">
 <h2>Date range</h2>
@@ -79,24 +67,19 @@
        );
     });
   </script>
-
-<br /><input class="btn btn-default" type="submit" value="Choose" />
+<br /><input class="btn btn-default" type="submit" value="Submit" />
 </form>
 </div>
 </div>
-
     <!--
     Show the calendar list (if we have it).  This will need to be turned into
     a form from which calendars can be picked. Up to three entries are
     shown in each row (but the order is across then down; I would
     prefer down then across). 
     -->
-
 {% if session.calendars is defined  %}
 <div class="row">
 <div class="col-md-12">
-
-
 <script type="text/javascript" >
 	function setCheckStates(state) {
 		$("input[type='checkbox']").prop('checked', state);
@@ -108,7 +91,6 @@
 		setCheckStates(false);
 	});
 </script>
-
 <form action="/show_busy" method="post">
   <div class="row">
   {% for cal in session.calendars if cal.selected %}
@@ -123,14 +105,12 @@
   {% endfor %}
   </div>
   <div class="row">
-    <button class="btn btn-default" type="submit">Busy times</button>
+    <button class="btn btn-default" type="submit">Appointment Times</button>
   </div>
 </form>
-
 </div>
 </div>
 {% endif %}
     
-
   </div>  <!-- container (for bootstrap) -->
   </body> </html>

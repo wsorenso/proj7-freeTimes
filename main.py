@@ -3,39 +3,32 @@ from flask import render_template
 from flask import request
 from flask import url_for
 import uuid
-
 import json
 import logging
-
 # Date handling 
 import arrow # Replacement for datetime, based on moment.js
 import datetime # But we still need time
 from dateutil import tz  # For interpreting local times
-
-
 # OAuth2  - Google library implementation for convenience
 from oauth2client import client
 import httplib2   # used in oauth2 flow
-
 # Google API for services 
 from apiclient import discovery
-
+#import our class written for finding possible appointment times
+from freeTimes import Free_Times
 ###
 # Globals
 ###
 import CONFIG
 app = flask.Flask(__name__)
-
 SCOPES = 'https://www.googleapis.com/auth/calendar.readonly'
 CLIENT_SECRET_FILE = CONFIG.GOOGLE_LICENSE_KEY  ## You'll need this
 APPLICATION_NAME = 'MeetMe class project'
-
 #############################
 #
 #  Pages (routed from URLs)
 #
 #############################
-
 @app.route("/")
 @app.route("/index")
 def index():
@@ -43,7 +36,6 @@ def index():
   if 'begin_date' not in flask.session:
     init_session_values()
   return render_template('index.html')
-
 @app.route("/choose")
 def choose():
     ## We'll need authorization to list calendars 
@@ -55,12 +47,10 @@ def choose():
     if not credentials:
       app.logger.debug("Redirecting to authorization")
       return flask.redirect(flask.url_for('oauth2callback'))
-
     gcal_service = get_gcal_service(credentials)
     app.logger.debug("Returned from get_gcal_service")
     flask.session['calendars'] = list_calendars(gcal_service)
     return flask.redirect(flask.url_for('index'))
-
 @app.route("/show_busy", methods=['POST'])
 def show_busy():
     app.logger.debug("Checking credentials for Google calendar access")
@@ -75,9 +65,9 @@ def show_busy():
     selected_cals = request.form.getlist('calendars')
     app.logger.debug(selected_cals)
     flask.session['busy_times'] = get_times(gcal_service, selected_cals)
-    
+    flask.session['apt_times'] = find_apt_times();
+	
     return render_template('show_busy.html')
-
 ####
 #
 #  Google calendar authorization:
@@ -106,7 +96,6 @@ def show_busy():
 #  as a 'continuation' or 'return address' to use instead. 
 #
 ####
-
 def valid_credentials():
     """
     Returns OAuth2 credentials if we have valid
@@ -116,16 +105,12 @@ def valid_credentials():
     """
     if 'credentials' not in flask.session:
       return None
-
     credentials = client.OAuth2Credentials.from_json(
         flask.session['credentials'])
-
     if (credentials.invalid or
         credentials.access_token_expired):
       return None
     return credentials
-
-
 def get_gcal_service(credentials):
   """
   We need a Google calendar 'service' object to obtain
@@ -141,7 +126,6 @@ def get_gcal_service(credentials):
   service = discovery.build('calendar', 'v3', http=http_auth)
   app.logger.debug("Returning service")
   return service
-
 @app.route('/oauth2callback')
 def oauth2callback():
   """
@@ -182,7 +166,6 @@ def oauth2callback():
     ## the main screen
     app.logger.debug("Got credentials")
     return flask.redirect(flask.url_for('choose'))
-
 #####
 #
 #  Option setting:  Buttons or forms that add some
@@ -193,7 +176,6 @@ def oauth2callback():
 #      page, where we may put the new information to use. 
 #
 #####
-
 @app.route('/setrange', methods=['POST'])
 def setrange():
     """
@@ -212,13 +194,11 @@ def setrange():
       daterange_parts[0], daterange_parts[1], 
       flask.session['begin_date'], flask.session['end_date']))
     return flask.redirect(flask.url_for("choose"))
-
 ####
 #
 #   Initialize session variables 
 #
 ####
-
 def init_session_values():
     """
     Start with some reasonable defaults for date and time ranges.
@@ -236,7 +216,6 @@ def init_session_values():
     # Default time span each day, 9 to 5
     flask.session["begin_time"] = interpret_time("9am")
     flask.session["end_time"] = interpret_time("5pm")
-
 def interpret_time( text ):
     """
     Read time in a human-compatible format and
@@ -255,7 +234,6 @@ def interpret_time( text ):
               .format(text))
         raise
     return as_arrow.isoformat()
-
 def interpret_date( text ):
     """
     Convert text of date to ISO format used internally,
@@ -268,14 +246,12 @@ def interpret_date( text ):
         flask.flash("Date '{}' didn't fit expected format 12/31/2001")
         raise
     return as_arrow.isoformat()
-
 def next_day(isotext):
     """
     ISO date + 1 day (used in query to Google calendar)
     """
     as_arrow = arrow.get(isotext)
     return as_arrow.replace(days=+1).isoformat()
-
 ####
 #
 #  Functions (NOT pages) that return some information
@@ -306,7 +282,6 @@ def list_calendars(service):
         selected = ("selected" in cal) and cal["selected"]
         primary = ("primary" in cal) and cal["primary"]
         
-
         result.append(
           { "kind": kind,
             "id": id,
@@ -315,8 +290,6 @@ def list_calendars(service):
             "primary": primary
             })
     return sorted(result, key=cal_sort_key)
-
-
 def cal_sort_key( cal ):
     """
     Sort key for the list of calendars:  primary calendar first,
@@ -334,6 +307,7 @@ def cal_sort_key( cal ):
     return (primary_key, selected_key, cal["summary"])
     
 def get_times(service, calendars):
+	#returns a list of busy times from the google calendars
 	busyTimes = [] # Busy Time List
 	
 	time_min = flask.session["begin_date"]
@@ -356,18 +330,22 @@ def get_times(service, calendars):
 			item_range = {"start": t_start, "end": t_end, "desc": item["summary"]}
 			if "transparency" in item and item["transparency"] == "transparent":
 				print()# testing transparency property
-			else:
+			else:#is a blocking event, so append it to our list
 				busyTimes.append(item_range)
 	
 	return busyTimes
-
-
+def find_apt_times():#finds appointment times by giving busy_times to class Free_times
+	busyTimes = flask.session["busy_times"]#get our list of busy times we made out of the session obj
+	busyTimes = Free_Times.unionize(busyTimes)
+	freeList = Free_Times.normal_business_hours(flask.session["begin_date"], flask.session["end_date"]
+	, flask.session["begin_time"], flask.session["end_time"], busyTimes)
+	#freeList = Free_Times.clean_free_list(flask.session["begin_time"], flask.session["end_time"], busyTimes)
+	return freeList.get_free_times()
 #################
 #
 # Functions used within the templates
 #
 #################
-
 @app.template_filter( 'fmtdate' )
 def format_arrow_date( date ):
     try: 
@@ -375,7 +353,6 @@ def format_arrow_date( date ):
         return normal.format("ddd MM/DD/YYYY")
     except:
         return "(bad date)"
-
 @app.template_filter( 'fmttime' )
 def format_arrow_time( time ):
     try:
@@ -383,7 +360,6 @@ def format_arrow_time( time ):
         return normal.format("HH:mm")
     except:
         return "(bad time)"
-
 @app.template_filter( 'fmtdatetime' )
 def format_arrow_datetime( datetime ):
     try:
@@ -393,13 +369,10 @@ def format_arrow_datetime( datetime ):
         return "(bad time)"
     
 #############
-
-
 if __name__ == "__main__":
   # App is created above so that it will
   # exist whether this is 'main' or not
   # (e.g., if we are running in a CGI script)
-
   app.secret_key = str(uuid.uuid4())  
   app.debug=CONFIG.DEBUG
   app.logger.setLevel(logging.DEBUG)
